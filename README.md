@@ -155,6 +155,13 @@ If you also want the built UI served by FastAPI, run `npm run build` in `voice_f
 * Tune VAD in `voice_backend/app/agent/fennec_ws.py` for faster/longer turns. It is extremely aggressive by default, which can cut off slow speakers.
 * Swap Groq LLM models for better intelligence at the price of increased cost and higher latency
 * Add in the audio markups into the LLM prompt, and switch the model to the Inworld `inworld-tts-1-max` model for increased realism (at double the cost and ~50% increased latency).
-* Adjust history length in `voice_backend/session.py` by altering this: `self._max_history_msgs`. This will increase costs.
+* Adjust history length in `voice_backend/app/agent/session.py` by altering this: `self._max_history_msgs`. This will increase costs.
+
+## 7) Current Backend Behavior
+
+* ASR final text is processed through a schema-guided business layer (`voice_backend/app/business/`) before TTS.
+* Current productized intent supports appointment booking with required fields: date, clinic, policy id, and doctor name.
+* Booking persistence uses JSON files in `voice_backend/app/business/data/`.
+* Per-websocket diagnostic logs are written to `voice_backend/logs/ws_sessions/`.
 
 MIT © Jordan Gibbs

@@ -1,9 +1,10 @@
 # Domains
 
 ## Conversational Runtime Domain
-Primary backend domain in `voice_backend/app/agent/`:
+Primary backend runtime domains in `voice_backend/app/agent/` and `voice_backend/app/business/`:
 - ASR integration and VAD events
-- LLM request/response handling
+- business-layer intent detection and appointment state machine
+- LLM structured request/response handling
 - TTS streaming
 - session/turn orchestration and barge-in handling
 
@@ -23,4 +24,3 @@ Frontend in `voice_frontend/src/`:
 Backend settings in `voice_backend/app/config.py` and `.env` conventions:
 - provider keys, model IDs, sample rates, endpoint URLs
 - runtime defaults and environment binding
-
