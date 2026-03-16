@@ -13,10 +13,19 @@ logger = logging.getLogger("hypercheap.session")
 
 
 class AgentSession:
-    def __init__(self, fennec: FennecWSClient, llm: GroqStructuredChat, tts: InworldTTS) -> None:
+    _REPLY_CHUNK_SIZE = 12
+
+    def __init__(
+        self,
+        fennec: FennecWSClient,
+        llm: Optional[GroqStructuredChat],
+        tts: InworldTTS,
+        session_id: Optional[str] = None,
+    ) -> None:
         self._fennec = fennec
         self._llm = llm
         self._tts = tts
+        self._session_id = session_id or "unknown"
 
         self._in_q: asyncio.Queue[Optional[bytes]] = asyncio.Queue(maxsize=6)
         self._barge_lock = asyncio.Lock()
@@ -43,7 +52,7 @@ class AgentSession:
 
     async def start(
         self,
-        on_asr_final: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_asr_final: Optional[Callable[[str], Awaitable[Optional[str]]]] = None,
         on_token: Optional[Callable[[str], Awaitable[None]]] = None,
         on_audio_chunk: Optional[Callable[[bytes], Awaitable[None]]] = None,
         on_segment_done: Optional[Callable[[], Awaitable[None]]] = None,
@@ -86,14 +95,18 @@ class AgentSession:
                     if len(self._history) > self._max_history_msgs:
                         self._history = self._history[-self._max_history_msgs :]
 
+            precomputed_reply: Optional[str] = None
             if on_asr_final:
-                await on_asr_final(text)
+                precomputed_reply = await on_asr_final(text)
 
             if self._speak_task and not self._speak_task.done():
                 logger.info("[session] barge-in detected, interrupting agent.")
                 self._speak_task.cancel()
 
-            self._speak_task = asyncio.create_task(self._generate_and_stream(text), name="agent_speak")
+            self._speak_task = asyncio.create_task(
+                self._generate_and_stream(text, precomputed_reply=precomputed_reply),
+                name="agent_speak",
+            )
 
         self._pcm_task = asyncio.create_task(self._pump_pcm(), name="agent_pcm")
         await self._fennec.start(on_final=on_final, on_vad=on_vad_inner)
@@ -129,8 +142,9 @@ class AgentSession:
                 self._in_q.put_nowait(pcm_le16)
 
     _PUNCT = re.compile(r"([.!?…]+|\n)")
+    _SPEECH_TAG = re.compile(r"\[[A-Za-z_]+\]")
 
-    async def _generate_and_stream(self, user_text: str) -> None:
+    async def _generate_and_stream(self, user_text: str, precomputed_reply: Optional[str] = None) -> None:
         utext = (user_text or "").strip()
         if not utext:
             return
@@ -144,31 +158,54 @@ class AgentSession:
 
         seg_q: asyncio.Queue[Optional[str]] = asyncio.Queue()
         reply_parts: list[str] = []
+        final_reply_override: Optional[str] = None
 
         async def segment_writer():
+            nonlocal final_reply_override
             buf: list[str] = []
             char_budget = 250
             t0 = time.perf_counter()
             first_tok_at: Optional[float] = None
 
             try:
-                async for tok in self._llm.stream_reply(utext, history=hist_for_llm):
-                    if not tok:
-                        continue
+                if precomputed_reply is not None:
+                    normalized_reply = self._sanitize_for_tts(precomputed_reply)
+                    final_reply_override = normalized_reply
+                    tokens = self._chunk_reply_text(normalized_reply)
+                    for tok in tokens:
+                        if not tok:
+                            continue
+                        reply_parts.append(tok)
+                        if self._on_token:
+                            await self._on_token(tok)
+                        if first_tok_at is None:
+                            first_tok_at = time.perf_counter()
+                            logger.info("[latency] llm first_token=%.3fs", first_tok_at - t0)
+                        buf.append(tok)
+                        s = "".join(buf)
+                        ready_segments, remainder = self._flush_ready_segments(s, char_budget)
+                        for segment in ready_segments:
+                            await seg_q.put(segment)
+                        buf = [remainder] if remainder else []
+                elif self._llm is not None:
+                    async for tok in self._llm.stream_reply(utext, history=hist_for_llm):
+                        if not tok:
+                            continue
 
-                    reply_parts.append(tok)
-                    if self._on_token:
-                        await self._on_token(tok)
+                        reply_parts.append(tok)
+                        if self._on_token:
+                            await self._on_token(tok)
 
-                    if first_tok_at is None:
-                        first_tok_at = time.perf_counter()
-                        logger.info("[latency] llm first_token=%.3fs", first_tok_at - t0)
+                        if first_tok_at is None:
+                            first_tok_at = time.perf_counter()
+                            logger.info("[latency] llm first_token=%.3fs", first_tok_at - t0)
 
-                    buf.append(tok)
-                    s = "".join(buf)
-                    if len(s) >= char_budget or self._PUNCT.search(s):
-                        await seg_q.put(s.strip())
-                        buf.clear()
+                        buf.append(tok)
+                        s = "".join(buf)
+                        ready_segments, remainder = self._flush_ready_segments(s, char_budget)
+                        for segment in ready_segments:
+                            await seg_q.put(segment)
+                        buf = [remainder] if remainder else []
 
                 tail = "".join(buf).strip()
                 if tail:
@@ -185,9 +222,10 @@ class AgentSession:
                     seg = await seg_q.get()
                     if seg is None:
                         break
+                    logger.info("[tts:segment] session_id=%s text=%r", self._session_id, seg)
                     got_audio = False
                     t1 = time.perf_counter()
-                    async for audio in self._tts.synthesize(seg):
+                    async for audio in self._tts.synthesize(seg, session_id=self._session_id):
                         if not audio:
                             continue
                         if not got_audio:
@@ -211,7 +249,7 @@ class AgentSession:
             await asyncio.gather(segment_writer(), tts_consumer())
 
             # Only append ASSISTANT if the turn completed successfully
-            reply_text = "".join(reply_parts).strip()
+            reply_text = final_reply_override if final_reply_override is not None else "".join(reply_parts).strip()
             if reply_text:
                 async with self._hist_lock:
                     self._history.append({"role": "assistant", "content": reply_text})
@@ -286,3 +324,38 @@ class AgentSession:
         await self._fennec.stop()
         with contextlib.suppress(Exception):
             await self._tts.close()
+
+    def _chunk_reply_text(self, text: str) -> list[str]:
+        cleaned = text.strip()
+        if not cleaned:
+            return []
+        return [cleaned[i : i + self._REPLY_CHUNK_SIZE] for i in range(0, len(cleaned), self._REPLY_CHUNK_SIZE)]
+
+    def _sanitize_for_tts(self, text: str) -> str:
+        no_tags = self._SPEECH_TAG.sub("", text)
+        return " ".join(no_tags.split())
+
+    def _flush_ready_segments(self, text: str, char_budget: int) -> tuple[list[str], str]:
+        ready: list[str] = []
+        remaining = text
+        while remaining:
+            punct_matches = list(self._PUNCT.finditer(remaining))
+            if punct_matches:
+                end_idx = punct_matches[-1].end()
+                segment = remaining[:end_idx].strip()
+                if segment:
+                    ready.append(segment)
+                remaining = remaining[end_idx:].lstrip()
+                continue
+
+            if len(remaining) >= char_budget:
+                split_at = remaining.rfind(" ", 0, char_budget)
+                if split_at <= 0:
+                    split_at = char_budget
+                segment = remaining[:split_at].strip()
+                if segment:
+                    ready.append(segment)
+                remaining = remaining[split_at:].lstrip()
+                continue
+            break
+        return ready, remaining

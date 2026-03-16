@@ -1,0 +1,85 @@
+[
+  {
+    "id": "appt_1001",
+    "policyholder_id": "ph_001",
+    "clinic_id": "clinic_001",
+    "date": "2026-03-20",
+    "reason": "Annual checkup",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_1002",
+    "policyholder_id": "ph_002",
+    "clinic_id": "clinic_002",
+    "date": "2026-03-22",
+    "reason": "Follow-up",
+    "status": "cancelled"
+  },
+  {
+    "id": "appt_bb1e8e6e",
+    "policyholder_id": "unknown",
+    "clinic_id": "clinic_001",
+    "date": "2026-03-03",
+    "reason": "General consultation",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_1c0200f1",
+    "policyholder_id": "unknown",
+    "clinic_id": "clinic_001",
+    "date": "2026-03-03",
+    "reason": "General consultation",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_a9534c0a",
+    "policyholder_id": "unknown",
+    "clinic_id": "clinic_002",
+    "date": "2026-03-27",
+    "reason": "General consultation",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_2dbef324",
+    "policyholder_id": "unknown",
+    "clinic_id": "clinic_002",
+    "date": "2026-03-27",
+    "reason": "General consultation",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_a9be923e",
+    "policyholder_id": "unknown",
+    "clinic_id": "clinic_001",
+    "date": "2026-03-20",
+    "reason": "General consultation",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_c8e87061",
+    "policyholder_id": "P O L",
+    "clinic_id": "clinic_001",
+    "date": "2026-03-17",
+    "reason": "Appointment with Dr. One zero zero one",
+    "doctor_name": "One zero zero one",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_beddec9d",
+    "policyholder_id": "POL-1001",
+    "clinic_id": "clinic_003",
+    "date": "2026-03-23",
+    "reason": "Appointment with Dr. Kim Kardashian",
+    "doctor_name": "Kim Kardashian",
+    "status": "scheduled"
+  },
+  {
+    "id": "appt_a6afac6f",
+    "policyholder_id": "POL-1001",
+    "clinic_id": "clinic_003",
+    "date": "2026-03-28",
+    "reason": "Appointment with Dr. Kim Kardashian",
+    "doctor_name": "Kim Kardashian",
+    "status": "scheduled"
+  }
+]

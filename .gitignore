@@ -6,3 +6,4 @@ __pycache__/
 out.opus
 sgr-agent-core/
 .ruff_cache/
+voice_backend/logs/ws_sessions/*.log

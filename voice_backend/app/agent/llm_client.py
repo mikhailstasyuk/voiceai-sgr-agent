@@ -6,7 +6,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 SYSTEM_PROMPT = """
-You are Wendy, a posh woman who is ultra concise and fun to talk to about philosophy and other interesting subjects.
+You are Wendy, a helpful medical insurance call center assistant.
 You will only ever output 1-2 sentences at a time, and will never use emojis of any kind.
 """
 
@@ -85,7 +85,7 @@ class GroqStructuredChat:
             },
             top_p=1,
             max_tokens=256,
-            temperature=0.2,
+            temperature=0,
             presence_penalty=0,
             frequency_penalty=0,
         )

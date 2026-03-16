@@ -47,11 +47,12 @@ class InworldTTS:
             with contextlib.suppress(Exception):
                 await resp.aclose()
 
-    async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+    async def synthesize(self, text: str, session_id: str | None = None) -> AsyncIterator[bytes]:
         if not text or not text.strip():
             return
 
         self._stop_evt.clear()
+        sid = session_id or "unknown"
 
         payload = {
             "text": text,
@@ -68,16 +69,28 @@ class InworldTTS:
             "Authorization": self._auth,
             "Content-Type": "application/json",
         }
+        logger.info(
+            "[tts:request] session_id=%s model=%s voice=%s sample_rate=%d text=%r",
+            sid,
+            self._model,
+            self._voice,
+            self._sr,
+            text,
+        )
 
         async with self._client.stream("POST", self._url, headers=headers, json=payload) as resp:
             self._active_resp = resp
             try:
                 resp.raise_for_status()
+                logger.info("[tts:response] session_id=%s status=%d", sid, resp.status_code)
+                line_count = 0
                 async for line in resp.aiter_lines():
                     if self._stop_evt.is_set():
+                        logger.info("[tts:response] session_id=%s stopped_early=true", sid)
                         break
                     if not line:
                         continue
+                    line_count += 1
                     try:
                         obj = json.loads(line)
                         data_b64 = obj.get("result", {}).get("audioContent")
@@ -85,15 +98,23 @@ class InworldTTS:
                             continue
                         wav_bytes = base64.b64decode(data_b64)
                         if len(wav_bytes) > 44:
+                            pcm_len = len(wav_bytes) - 44
+                            logger.info(
+                                "[tts:chunk] session_id=%s line=%d wav_bytes=%d pcm_bytes=%d",
+                                sid,
+                                line_count,
+                                len(wav_bytes),
+                                pcm_len,
+                            )
                             yield wav_bytes[44:]
                     except Exception as e:
                         logger.debug("[inworld] skip line parse err: %s", e)
             except httpx.HTTPStatusError as e:
-                logger.error("[inworld] HTTP error: %s", e)
+                logger.error("[tts:error] session_id=%s http_error=%s", sid, e)
                 try:
                     snippet = (await resp.aread())[:256]
                     if snippet:
-                        logger.error("[inworld] error body: %r", snippet)
+                        logger.error("[tts:error] session_id=%s error_body=%r", sid, snippet)
                 except Exception:
                     pass
                 return
