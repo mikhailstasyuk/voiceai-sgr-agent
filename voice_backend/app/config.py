@@ -9,10 +9,10 @@ class Settings(BaseSettings):
     fennec_sample_rate: int = 16000
     fennec_channels: int = 1
 
-    # Baseten
-    baseten_api_key: str
-    baseten_base_url: str = "https://inference.baseten.co/v1"
-    baseten_model: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+    # Groq (OpenAI-compatible)
+    groq_api_key: str
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "openai/gpt-oss-120b"
 
     # Inworld TTS
     inworld_api_key: str

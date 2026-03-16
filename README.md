@@ -17,7 +17,7 @@ From a cost perspective, the Hypercheap stack is:
 - **20x** cheaper than Elevenlabs Voice Agents
 - **10x** cheaper than most Vapi stacks
 
-> **Stack:** Fennec (Realtime ASR) → Baseten (LLM via OpenAI-compatible API) → Inworld (streamed TTS)
+> **Stack:** Fennec (Realtime ASR) → Groq (LLM via OpenAI-compatible API + strict JSON schema output) → Inworld (streamed TTS)
 
 ---
 # Demo
@@ -43,14 +43,13 @@ You’ll paste that key into your .env as `FENNEC_API_KEY`.
 
 ---
 
-### B. Baseten (LLM — OpenAI-compatible)
+### B. Groq (LLM — OpenAI-compatible)
 
-1. Sign up for **Baseten** (1 dollar of inference included): [https://app.baseten.co](https://app.baseten.co)
-2. Click "Model APIs" and "Add Model API" and create one for "Qwen3 235B A22B"
-3. After creating, click "API Endpoint" and generate an API key.
-4. This setup calls Baseten via the **OpenAI-compatible** endpoint. The default base URL in this repo is `https://inference.baseten.co/v1` and the default model is `Qwen/Qwen3-235B-A22B-Instruct-2507`.
+1. Create a **Groq** account and generate an API key: [https://console.groq.com/keys](https://console.groq.com/keys)
+2. This setup calls Groq via the **OpenAI-compatible** endpoint. The default base URL in this repo is `https://api.groq.com/openai/v1` and the default model is `openai/gpt-oss-120b`.
+3. The backend requests strict structured output (`response_format.type=json_schema`) and validates it before sending text to TTS.
 
-You’ll paste the API key as `BASETEN_API_KEY` into your .env. Keep the provided base URL and model (or swap to another more performant Baseten model if you like).
+You’ll paste the API key as `GROQ_API_KEY` into your `.env`. Keep the provided base URL/model, or swap to another Groq model that supports structured outputs.
 
 ---
 
@@ -76,10 +75,10 @@ FENNEC_API_KEY=...
 FENNEC_SAMPLE_RATE=16000
 FENNEC_CHANNELS=1
 
-# Baseten (OpenAI-compatible)
-BASETEN_API_KEY=...
-BASETEN_BASE_URL=https://inference.baseten.co/v1
-BASETEN_MODEL=Qwen/Qwen3-235B-A22B-Instruct-2507
+# Groq (OpenAI-compatible)
+GROQ_API_KEY=...
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_MODEL=openai/gpt-oss-120b
 
 # Inworld TTS
 INWORLD_API_KEY=...  
@@ -134,14 +133,14 @@ If you also want the built UI served by FastAPI, run `npm run build` in `voice_f
 ## 5) Cost Breakdown (how it’s \~\$0.28/hr)
 
 * **ASR (Fennec, streaming):** as low as **\$0.11/hr** on scale tier (or **\$0.16/hr** starter), with a generous free trial
-* **LLM (Baseten Qwen3-235B-A22B):** **\$0.22 / 1M input tokens** and **\$0.80 / 1M output tokens**
+* **LLM (Groq `openai/gpt-oss-120b`):** pricing varies by model tier and can be checked in the Groq console pricing page.
 * **TTS (Inworld):** **\$5.00 / 1M characters**, which they estimate as **≈\$0.25 per audio‑hour** of generated speech.
 
 > **Example:** In a typical chat, the AI speaks \~40–60% of the time.
 >
 > • Fennec ASR: \~\$0.11/hr
 > • Inworld TTS: \$0.25 × 0.5 = **\$0.125/hr** (assumes 30 min of AI speech per session hour)
-> • Baseten LLM tokens: usually **\~\$0.01–\$0.03/hr** at short replies
+> • Groq LLM tokens: usually small relative to TTS/ASR in short, concise responses (verify against your selected model pricing).
 >
 > **Total:** **\~\$0.25–\$0.35 per session hour**
 
@@ -152,9 +151,9 @@ If you also want the built UI served by FastAPI, run `npm run build` in `voice_f
 
 ## 6) Customizations
 
-* Swap voices (Inworld) or LLM models (Baseten) by changing the env vars.
+* Swap voices (Inworld) or LLM models (Groq) by changing the env vars.
 * Tune VAD in `voice_backend/app/agent/fennec_ws.py` for faster/longer turns. It is extremely aggressive by default, which can cut off slow speakers.
-* Swap LLMs in Baseten for better intelligence at the price of increased cost and higher latency
+* Swap Groq LLM models for better intelligence at the price of increased cost and higher latency
 * Add in the audio markups into the LLM prompt, and switch the model to the Inworld `inworld-tts-1-max` model for increased realism (at double the cost and ~50% increased latency).
 * Adjust history length in `voice_backend/session.py` by altering this: `self._max_history_msgs`. This will increase costs.
 

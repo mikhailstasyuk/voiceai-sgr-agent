@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .agent.fennec_ws import DEFAULT_VAD, FennecWSClient
 from .agent.inworld_tts import InworldTTS
-from .agent.llm_client import BasetenChat
+from .agent.llm_client import GroqStructuredChat
 from .agent.protocol import (
     AsrFinalEvent,
     AudioStartEvent,
@@ -54,10 +54,10 @@ async def ws_agent(ws: WebSocket):
         channels=settings.fennec_channels,
         vad=DEFAULT_VAD,  # IMPORTANT: request VAD events + cadence
     )
-    llm = BasetenChat(
-        api_key=settings.baseten_api_key,
-        base_url=settings.baseten_base_url,
-        model=settings.baseten_model,
+    llm = GroqStructuredChat(
+        api_key=settings.groq_api_key,
+        base_url=settings.groq_base_url,
+        model=settings.groq_model,
     )
     tts = InworldTTS(
         api_key_basic_b64=settings.inworld_api_key,

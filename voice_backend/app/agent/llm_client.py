@@ -1,7 +1,9 @@
 import asyncio
-from typing import AsyncIterator, Dict, List, Optional
+import json
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 SYSTEM_PROMPT = """
 You are Wendy, a posh woman who is ultra concise and fun to talk to about philosophy and other interesting subjects.
@@ -18,7 +20,15 @@ Use tags verbatim; do not invent new ones.
 """
 
 
-class BasetenChat:
+class StructuredReply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    spoken_response: str
+
+
+class GroqStructuredChat:
+    _SCHEMA_NAME = "voice_agent_reply"
+    _REPLY_CHUNK_SIZE = 12
+
     def __init__(self, api_key: str, base_url: str, model: str) -> None:
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
@@ -51,10 +61,28 @@ class BasetenChat:
             messages.extend(history)
         messages.append({"role": "user", "content": user_text})
 
-        stream = await self.client.chat.completions.create(
+        completion = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            stream=True,
+            stream=False,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": self._SCHEMA_NAME,
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "spoken_response": {
+                                "type": "string",
+                                "description": "The exact assistant reply intended to be spoken to the user.",
+                            }
+                        },
+                        "required": ["spoken_response"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
             top_p=1,
             max_tokens=256,
             temperature=0.2,
@@ -62,10 +90,49 @@ class BasetenChat:
             frequency_penalty=0,
         )
 
-        self._current_stream = stream
+        self._current_stream = completion
         try:
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+            reply_text = self._extract_reply_text(completion)
+            for chunk in self._chunk_reply(reply_text):
+                yield chunk
         finally:
             self._current_stream = None
+
+    def _extract_reply_text(self, completion: Any) -> str:
+        if not completion.choices:
+            raise ValueError("No completion choices returned by Groq.")
+
+        msg = completion.choices[0].message
+        content = msg.content
+        if content is None:
+            raise ValueError("Groq completion did not include message content.")
+
+        raw_json = self._flatten_content(content)
+        try:
+            parsed = StructuredReply.model_validate_json(raw_json)
+        except ValidationError as exc:
+            raise ValueError("Groq completion failed strict schema validation.") from exc
+        return parsed.spoken_response.strip()
+
+    def _flatten_content(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts: list[str] = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+                elif hasattr(part, "type") and getattr(part, "type") == "text":
+                    text_parts.append(getattr(part, "text", ""))
+            joined = "".join(text_parts).strip()
+            if joined:
+                return joined
+        if isinstance(content, dict):
+            return json.dumps(content)
+        raise ValueError("Unexpected Groq response content format.")
+
+    def _chunk_reply(self, text: str) -> list[str]:
+        clean_text = text.strip()
+        if not clean_text:
+            return []
+        return [clean_text[i : i + self._REPLY_CHUNK_SIZE] for i in range(0, len(clean_text), self._REPLY_CHUNK_SIZE)]
