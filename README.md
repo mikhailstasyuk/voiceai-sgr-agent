@@ -1,6 +1,6 @@
 # SGR AI Voice Agent
 
-Local development setup (no Docker).
+Local development setup.
 
 ## 1) Install backend requirements
 
