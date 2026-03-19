@@ -1,0 +1,32 @@
+[
+  {
+    "policy_id": "POL-1001",
+    "full_name": "Alex Carter",
+    "status": "active",
+    "current_plan_id": "plan_intermediate",
+    "assigned_clinic_id": "clinic_001",
+    "policy_start_date": "2025-04-10",
+    "last_renewal_date": null,
+    "last_clinic_change_date": "2024-12-01"
+  },
+  {
+    "policy_id": "POL-1002",
+    "full_name": "Jamie Lee",
+    "status": "active",
+    "current_plan_id": "plan_cheap",
+    "assigned_clinic_id": "clinic_002",
+    "policy_start_date": "2024-03-20",
+    "last_renewal_date": "2026-03-18",
+    "last_clinic_change_date": "2025-01-10"
+  },
+  {
+    "policy_id": "POL-1003",
+    "full_name": "Morgan Diaz",
+    "status": "active",
+    "current_plan_id": "plan_intermediate",
+    "assigned_clinic_id": "clinic_003",
+    "policy_start_date": "2023-02-01",
+    "last_renewal_date": "2026-03-18",
+    "last_clinic_change_date": "2024-02-01"
+  }
+]

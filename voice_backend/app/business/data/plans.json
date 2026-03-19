@@ -1,0 +1,17 @@
+[
+  {
+    "id": "plan_cheap",
+    "name": "cheap",
+    "monthly_price_usd": 29
+  },
+  {
+    "id": "plan_intermediate",
+    "name": "intermediate",
+    "monthly_price_usd": 59
+  },
+  {
+    "id": "plan_expensive",
+    "name": "expensive",
+    "monthly_price_usd": 99
+  }
+]

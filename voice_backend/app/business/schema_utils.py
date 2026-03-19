@@ -12,6 +12,13 @@ def to_groq_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 def _walk(node: Any) -> None:
     if isinstance(node, dict):
+        if "$ref" in node:
+            # Some providers reject sibling keywords on $ref nodes.
+            ref = node.get("$ref")
+            node.clear()
+            node["$ref"] = ref
+            return
+
         node_type = node.get("type")
         properties = node.get("properties")
         if node_type == "object" and isinstance(properties, dict):

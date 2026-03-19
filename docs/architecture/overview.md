@@ -7,7 +7,7 @@ This repository has two primary runtime surfaces:
 ## High-Level Runtime Path
 1. Frontend captures PCM audio and streams via WebSocket.
 2. Backend forwards audio to ASR and receives transcripts/VAD events.
-3. Backend business layer classifies intent and executes appointment flow decisions via structured LLM outputs.
+3. Backend business layer runs onboarding gate, classifies service intent, and executes flow decisions via structured LLM outputs.
 4. Backend streams synthesized TTS audio back to frontend.
 5. Frontend plays audio and updates status/transcript UI.
 

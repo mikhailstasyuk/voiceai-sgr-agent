@@ -7,3 +7,4 @@ out.opus
 sgr-agent-core/
 .ruff_cache/
 voice_backend/logs/ws_sessions/*.log
+sgr-agent-core

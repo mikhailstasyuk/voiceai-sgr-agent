@@ -6,7 +6,7 @@
 2. **Orchestration Layer**
    - Session coordination, callbacks, turn control (`app/agent/session.py`)
 3. **Business Layer**
-   - Intent detection, state machine, appointment flow, session store (`app/business/`)
+   - Onboarding gate, intent detection, service flows, callback scheduling/support, session store (`app/business/`)
 4. **Provider Adapter Layer**
    - External service clients (`fennec_ws.py`, `llm_client.py`, `inworld_tts.py`)
 5. **Schema/Protocol Layer**

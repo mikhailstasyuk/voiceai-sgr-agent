@@ -3,7 +3,7 @@
 ## Conversational Runtime Domain
 Primary backend runtime domains in `voice_backend/app/agent/` and `voice_backend/app/business/`:
 - ASR integration and VAD events
-- business-layer intent detection and appointment state machine
+- business-layer onboarding, intent detection, and multi-service flow state machines
 - LLM structured request/response handling
 - TTS streaming
 - session/turn orchestration and barge-in handling

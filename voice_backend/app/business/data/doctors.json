@@ -1,0 +1,38 @@
+[
+  {
+    "id": "doc_001",
+    "clinic_id": "clinic_001",
+    "name": "Avery Patel",
+    "available_slots": ["2026-03-20", "2026-03-21"]
+  },
+  {
+    "id": "doc_002",
+    "clinic_id": "clinic_001",
+    "name": "Morgan Nguyen",
+    "available_slots": ["2026-03-24"]
+  },
+  {
+    "id": "doc_003",
+    "clinic_id": "clinic_002",
+    "name": "Jordan Kim",
+    "available_slots": ["2026-03-22", "2026-03-25"]
+  },
+  {
+    "id": "doc_004",
+    "clinic_id": "clinic_002",
+    "name": "Leah Brooks",
+    "available_slots": ["2026-03-27"]
+  },
+  {
+    "id": "doc_005",
+    "clinic_id": "clinic_003",
+    "name": "Noah Chen",
+    "available_slots": ["2026-03-19", "2026-03-23"]
+  },
+  {
+    "id": "doc_006",
+    "clinic_id": "clinic_003",
+    "name": "Sofia Rivera",
+    "available_slots": ["2026-03-28"]
+  }
+]

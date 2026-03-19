@@ -1,239 +1,181 @@
-# Codex Repository Setup Prompt (Documentation-Only, Repository-Agnostic)
+**TASK: Build a Schema-Guided Business Layer for a Voice Insurance Agent — Appointment Booking Only**
 
-You are preparing this repository to operate in an **agent-first engineering environment using Codex**, following the practices described in **OpenAI’s “Harness engineering: leveraging Codex in an agent-first world.”**
+**Context**
 
-Your task is to **create a documentation-only scaffolding** that allows Codex to reliably understand, navigate, plan, and implement work in the repository.
+You are extending a Python voice agent backend. The backend has a WebSocket endpoint (`/ws/agent`) in `voice_backend/app/main.py`. User speech is transcribed by ASR, and the resulting text currently goes straight to an LLM for a reply. You must insert a business layer between ASR output and LLM/TTS.
 
-⚠️ Important constraints:
+The business layer handles exactly **one user intent: booking an appointment**. The business layer uses **Schema-Guided Reasoning (SGR)**: every LLM call must return a validated Pydantic model, never free-form text. This is enforced via Groq's structured output / JSON mode. Python 3.12 is used throughout. All models must use Pydantic v2.
 
-- **Do NOT create scripts, automation, CI pipelines, or tooling**
-- **Do NOT modify build systems**
-- **Do NOT add linters or enforcement mechanisms**
-- Only produce **documentation, structure, and written conventions**
-- All guidance must live **inside the repository**
-- The goal is to make the repository **agent-legible and navigable for Codex**
+**What Schema-Guided Reasoning means here**
 
-Your output should be a **structured documentation system** that allows Codex to:
-
-- understand architecture
-- understand product intent
-- locate relevant code
-- create execution plans
-- reason about changes
-- update documentation when behavior changes
-- escalate when human judgment is required
+Instead of asking the LLM "what should I do?" and parsing its text, you define a strict Pydantic model for every LLM decision, serialize it to a JSON schema, pass that schema to Groq as the required response format, and validate the parsed response with Pydantic. If validation fails, retry up to a fixed limit. This makes every LLM decision deterministic, type-safe, and testable.
 
 ---
 
-# Guiding Principles (From OpenAI Agent-First Engineering Practices)
-
-Ensure the repository documentation reflects these core principles.
-
-## 1. Humans steer, agents execute
-
-In this workflow:
-
-- Humans define intent, architecture, and constraints.
-- Codex performs the implementation work.
-
-The repository must therefore prioritize **clarity of intent and system maps** over exhaustive explanations.
-
----
-
-## 2. The repository is the system of record
-
-Codex primarily understands the system through what exists **inside the repository**.
-
-Information that lives only in:
-
-- chat threads
-- Slack
-- external documents
-- people's heads
-
-is effectively invisible.
-
-Therefore:
-
-- key architectural knowledge must live in the repo
-- product behavior must be documented
-- plans must be recorded
-- terminology must be defined
+**Project structure to create**
+```
+voice_backend/app/business/
+├── __init__.py
+├── models.py
+├── session.py
+├── intent.py
+├── flows/
+│   ├── __init__.py
+│   └── appointment.py
+├── data/
+│   ├── appointments.json
+│   └── clinics.json
+└── layer.py
+```
 
 ---
 
-## 3. AGENTS.md must be small and act as a map
+**Step 1 — models.py**
 
-Do **NOT** create a giant instruction file.
+Define all Pydantic v2 models. Every field must use `Field(description="...")` so descriptions are included in the JSON schema sent to the LLM.
 
-Instead create a **short AGENTS.md (~100 lines)** that functions as a **routing guide**.
+`IntentType`: a `str` enum with two values: `APPOINTMENT` and `UNCLEAR`.
 
-AGENTS.md should:
+`IntentResult`:
+- `intent: IntentType = Field(description="The detected user intent. Use APPOINTMENT if the user wants to book, schedule, or arrange a medical appointment. Use UNCLEAR otherwise.")`
+- `confidence: float = Field(description="Confidence score between 0.0 and 1.0.")`
+- `extracted_entities: dict[str, str] = Field(description="Entities extracted from speech, e.g. {'date': '2025-08-01', 'clinic': 'City Clinic'}.")`
+- `reasoning: str = Field(description="One-sentence justification for the chosen intent.")`
 
-- explain the repo’s agent-first workflow
-- link to authoritative documents
-- instruct Codex where to find:
-  - architecture
-  - product specs
-  - plans
-  - domain definitions
-  - quality expectations
-  - terminology
+`SessionState`: a `str` enum with values `IDLE`, `AWAITING_CLARIFICATION`, `IN_FLOW`, `SCHEDULING_CALLBACK`, `COMPLETED`.
 
-AGENTS.md is a **table of contents**, not a manual.
+`SessionContext`: mutable dataclass or Pydantic model. Fields:
+- `session_id: str = Field(description="Unique identifier for this WebSocket session.")`
+- `state: SessionState = Field(default=SessionState.IDLE, description="Current state of the conversation.")`
+- `intent_attempts: int = Field(default=0, description="Number of consecutive turns where intent was UNCLEAR.")`
+- `pending_entities: dict[str, str] = Field(default_factory=dict, description="Entities collected so far for the active flow, e.g. date and clinic.")`
+- `active_flow: str | None = Field(default=None, description="Name of the currently active flow, or None.")`
+- `conversation_history: list[dict[str, str]] = Field(default_factory=list, description="List of {role, content} dicts, capped at last 10 turns, passed to every LLM call.")`
 
----
+`FlowResult`:
+- `response_text: str = Field(description="Text to speak aloud to the user.")`
+- `completed: bool = Field(description="True if the flow has reached a terminal state (booking confirmed or aborted).")`
+- `schedule_callback: bool = Field(default=False, description="True if the session should be escalated to a callback.")`
+- `updated_entities: dict[str, str] = Field(default_factory=dict, description="Any new entities extracted during this flow turn.")`
 
-## 4. Context should be organized, not dumped
+`AgentResponse`:
+- `text: str = Field(description="Final text to pass to TTS.")`
+- `should_end_session: bool = Field(default=False, description="True if the WebSocket session should be closed after this response.")`
 
-Codex performs best when information is **structured and indexed**.
-
-Avoid long unstructured documents.
-
-Prefer:
-
-- indexes
-- domain maps
-- small topic-focused documents
-- clear cross-references
-
----
-
-## 5. Architecture must be explicit
-
-Agent-driven systems work best when architecture is **clear and predictable**.
-
-Documentation should describe:
-
-- system domains
-- logical layers
-- dependency direction
-- cross-cutting concerns
-- where new code should live
-
-The goal is **architectural legibility**, not theoretical perfection.
+`AppointmentReasoning` (the SGR model for the appointment flow):
+- `action: Literal["ask_date", "ask_clinic", "confirm_booking", "cancel"] = Field(description="Next action to take. ask_date: date is missing. ask_clinic: clinic is missing. confirm_booking: both date and clinic are present and confirmed by user. cancel: user wants to stop.")`
+- `message_to_user: str = Field(description="The exact message to speak to the user for this action.")`
+- `extracted_date: str | None = Field(default=None, description="ISO date string if a date was mentioned in this turn, else None.")`
+- `extracted_clinic: str | None = Field(default=None, description="Clinic name or id if a clinic was mentioned in this turn, else None.")`
 
 ---
 
-## 6. Boundaries matter more than micro-style
+**Step 2 — data/ mock JSON files**
 
-Codex performs best when the system has clear **boundaries**.
+`clinics.json` — array of 3 entries. Each: `id`, `name`, `address`, `available_slots` (array of ISO date strings).
 
-Documentation should describe:
-
-- domain boundaries
-- service boundaries
-- module responsibilities
-- dependency direction
-
-Precise style conventions are less important than **clear structural rules**.
+`appointments.json` — array, initially 2 entries. Each: `id`, `policyholder_id`, `clinic_id`, `date` (ISO), `reason`, `status` (`scheduled`/`cancelled`).
 
 ---
 
-## 7. Data boundaries should be explicit
+**Step 3 — session.py**
 
-Agent-generated code must not rely on guessing data shapes.
+`SessionStore` class (not a singleton — instantiate once and pass around):
+- `_sessions: dict[str, SessionContext]` in memory.
+- `get_or_create(session_id: str) -> SessionContext`
+- `update(ctx: SessionContext) -> None`
+- `delete(session_id: str) -> None`
 
-Documentation should explain:
-
-- where data enters the system
-- where validation occurs
-- expected schemas
-- contract expectations
-
-The goal is preventing "guessing data structures."
+`SessionContext` is mutable. Flows update it in place; `BusinessLayer` saves it back via `session_store.update(ctx)` after every turn.
 
 ---
 
-## 8. The system must be legible to agents
+**Step 4 — intent.py**
 
-Codex should be able to understand:
+`IntentDetector` class. Constructor takes a Groq client and `model_name: str`.
 
-- how the application works
-- what components exist
-- how the system behaves
+Async method: `detect(text: str, session_ctx: SessionContext) -> IntentResult`.
 
-Documentation should therefore include:
-
-- architecture diagrams (conceptual)
-- service descriptions
-- request flow descriptions
-- domain explanations
-- system boundaries
+- Build a system prompt that explains the two intents (`APPOINTMENT`, `UNCLEAR`) and embeds `IntentResult.model_json_schema()` as the required response format.
+- Pass the last 10 turns from `session_ctx.conversation_history` plus the new utterance.
+- Use Groq's `response_format` / JSON mode.
+- Parse and validate with `IntentResult.model_validate(parsed_json)`.
+- On validation failure, retry once with an error-correction prompt.
+- On second failure, return `IntentResult(intent=IntentType.UNCLEAR, confidence=0.0, extracted_entities={}, reasoning="parse failure")`.
 
 ---
 
-## 9. Execution plans should live in the repository
+**Step 5 — flows/appointment.py**
 
-Codex performs best when complex tasks have **structured execution plans**.
+`AppointmentFlow` class. Constructor loads `clinics.json` once.
 
-Plans should be:
+Async method: `execute(text: str, session_ctx: SessionContext, groq_client, model_name: str) -> FlowResult`.
 
-- versioned
-- documented
-- updated during execution
-- archived when complete
+Logic:
+1. Merge any entities from `session_ctx.pending_entities` with whatever the LLM extracts this turn.
+2. Call Groq with `AppointmentReasoning.model_json_schema()` as required response format. System prompt includes the list of available clinics and slots, current collected entities, and conversation history (last 10 turns).
+3. Validate response as `AppointmentReasoning`.
+4. Merge `extracted_date` and `extracted_clinic` into `session_ctx.pending_entities` (mutate in place).
+5. On `action == "confirm_booking"`: write a new entry to `appointments.json` (read → append → write). Return `FlowResult(response_text=reasoning.message_to_user, completed=True)`.
+6. On `action == "cancel"`: return `FlowResult(response_text=reasoning.message_to_user, completed=True)`.
+7. On `ask_date` or `ask_clinic`: return `FlowResult(response_text=reasoning.message_to_user, completed=False)`.
 
----
-
-## 10. Human feedback should compound
-
-Repeated review feedback should eventually become:
-
-- documented rules
-- architectural guidance
-- conventions
-
-Documentation should capture these insights so they compound over time.
+Writing to `appointments.json`: read current contents with `json.loads(Path(...).read_text())`, append new record, write back with `Path(...).write_text(json.dumps(..., indent=2))`. No async I/O needed.
 
 ---
 
-## 11. Continuous cleanup is necessary
+**Step 6 — layer.py**
 
-Agent-generated code can produce drift and inconsistency.
+`BusinessLayer` class. Constructor takes: `groq_client`, `model_name: str`, `session_store: SessionStore`. Instantiates `IntentDetector` and `AppointmentFlow` once.
 
-The documentation system should therefore support:
+Main async method: `process(text: str, session_id: str) -> AgentResponse`.
 
-- documenting technical debt
-- identifying outdated plans
-- tracking architectural drift
-- recording cleanup work
+Logic:
+
+1. `ctx = session_store.get_or_create(session_id)` — `ctx` is mutable.
+2. Append `{"role": "user", "content": text}` to `ctx.conversation_history`. Cap history at last 10 entries.
+3. Branch on `ctx.state`:
+
+   **IDLE or COMPLETED**:
+   - Run `IntentDetector.detect(text, ctx)`.
+   - If `UNCLEAR`: increment `ctx.intent_attempts`. If >= 3, return `AgentResponse(text="I'm having trouble understanding. Let me arrange a callback for you.")` and set `ctx.state = SessionState.SCHEDULING_CALLBACK`. Otherwise set `ctx.state = SessionState.AWAITING_CLARIFICATION` and return a clarification prompt.
+   - If `APPOINTMENT`: reset `ctx.intent_attempts = 0`, store any `extracted_entities` into `ctx.pending_entities`, set `ctx.active_flow = "appointment"`, set `ctx.state = SessionState.IN_FLOW`, fall through to flow execution.
+
+   **AWAITING_CLARIFICATION**:
+   - Run `IntentDetector.detect(text, ctx)`.
+   - If still `UNCLEAR`: increment `ctx.intent_attempts`. Same escalation logic as above.
+   - If `APPOINTMENT`: reset, set state to `IN_FLOW`, fall through to flow execution.
+
+   **IN_FLOW**:
+   - Call `AppointmentFlow.execute(text, ctx, groq_client, model_name)`.
+   - If `result.completed`: set `ctx.state = SessionState.COMPLETED`.
+   - Build `AgentResponse(text=result.response_text)`.
+
+4. After every branch: append `{"role": "assistant", "content": response_text}` to `ctx.conversation_history`. Call `session_store.update(ctx)`. Return the `AgentResponse`.
 
 ---
 
-# Required Documentation Structure
+**Step 7 — Wiring into WebSocket**
 
-Create a repository documentation structure similar to the following.
+In `voice_backend/app/main.py`:
 
-Adjust names if a better fit exists for the repository.
-docs/
-    README.md
-    core-beliefs.md
-    glossary.md
+- Instantiate `SessionStore` once at module level.
+- Create a Groq client at startup.
+- Instantiate `BusinessLayer(groq_client, model_name, session_store)` at module level.
 
-architecture/
-    overview.md
-    domains.md
-    layers.md
-    dependency-rules.md
-    system-flows.md
+Inside `ws_agent`:
+- Derive `session_id = str(id(ws))`.
+- In `on_asr_final(text)`: call `response = await business_layer.process(text, session_id)`. Pass `response.text` directly to the TTS pipeline, bypassing `BasetenChat.stream_reply`.
+- On WebSocket disconnect: call `session_store.delete(session_id)`.
 
-product/
-    overview.md
-    user-workflows.md
-    requirements.md
+---
 
-plans/
-    README.md
-    active/
-    completed/
+**Constraints**
 
-quality/
-    quality-standards.md
-    reliability-goals.md
-
-references/
-    external-context.md
-
-debt/
-    tech-debt.md
+- Every LLM call must return a validated Pydantic model. No string parsing of LLM output outside the structured output path.
+- All Pydantic v2 syntax: `model_validate`, `model_json_schema`, `Field(description="...")` on every field.
+- `SessionContext` is mutable. Flows update it in place; `BusinessLayer` persists it via `session_store.update(ctx)` after every turn.
+- `conversation_history` is capped at 10 turns and passed to every LLM call.
+- JSON files are the only persistence. `clinics.json` is read once at startup. `appointments.json` is read and written on each booking.
+- No async file I/O: use `Path(...).read_text()` / `Path(...).write_text(...)`.
+- Flow classes and `IntentDetector` accept the Groq client and model name as arguments; they do not create them internally.

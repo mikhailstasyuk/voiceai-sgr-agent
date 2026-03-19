@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Any
 
-from pydantic import ValidationError
-
 from .models import IntentResult, IntentType, SessionContext
 from .schema_utils import to_groq_strict_schema
+from .sgr import call_structured_json
 
 log = logging.getLogger("hypercheap.business.intent")
 
 
 class IntentDetector:
+    _MAX_HISTORY_MESSAGES = 2
+
     def __init__(self, groq_client: Any, model_name: str) -> None:
         self._client = groq_client
         self._model_name = model_name
@@ -21,7 +21,7 @@ class IntentDetector:
     async def detect(self, text: str, session_ctx: SessionContext) -> IntentResult:
         detect_t0 = time.perf_counter()
         schema = self._intent_result_schema()
-        history = list(session_ctx.conversation_history[-10:])
+        history = list(session_ctx.conversation_history[-self._MAX_HISTORY_MESSAGES :])
         if not history or history[-1].get("role") != "user" or history[-1].get("content") != text:
             history.append({"role": "user", "content": text})
 
@@ -29,7 +29,11 @@ class IntentDetector:
             {
                 "role": "system",
                 "content": (
-                    "Classify user intent into APPOINTMENT or UNCLEAR only. "
+                    "Classify user intent into exactly one of: APPOINTMENT, POLICY_RENEWAL, "
+                    "PLAN_INQUIRY, CALLBACK_SUPPORT, UNCLEAR. "
+                    "Requests to change/switch/select plans map to PLAN_INQUIRY. "
+                    "Use CALLBACK_SUPPORT for callback status questions, callback cancellation/explanation requests, "
+                    "or callback rescheduling requests. "
                     "Return JSON strictly matching the schema."
                 ),
             },
@@ -52,7 +56,7 @@ class IntentDetector:
                 (time.perf_counter() - detect_t0) * 1000.0,
             )
             return result
-        except (ValidationError, ValueError, TypeError):
+        except Exception:
             log.exception("[intent:error] session_id=%s attempt=1 validation_failed", session_ctx.session_id)
             correction_messages = messages + [
                 {
@@ -79,7 +83,7 @@ class IntentDetector:
                     (time.perf_counter() - detect_t0) * 1000.0,
                 )
                 return result
-            except (ValidationError, ValueError, TypeError):
+            except Exception:
                 log.exception("[intent:error] session_id=%s attempt=2 validation_failed", session_ctx.session_id)
                 log.info(
                     "[intent:done] session_id=%s attempts=2 latency_ms=%.2f fallback=parse_failure",
@@ -142,30 +146,13 @@ class IntentDetector:
         messages: list[dict[str, str]],
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
-        completion = await self._client.chat.completions.create(
-            model=self._model_name,
+        parsed = await call_structured_json(
+            client=self._client,
+            model_name=self._model_name,
+            schema_name=schema_name,
+            schema=schema,
             messages=messages,
-            stream=False,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_name,
-                    "strict": True,
-                    "schema": schema,
-                },
-            },
-            temperature=0,
-            top_p=1,
         )
-
-        if not completion.choices:
-            raise ValueError("No completion choices returned")
-
-        content = completion.choices[0].message.content
-        raw_json = self._flatten_content(content)
-        parsed = json.loads(raw_json)
-        if not isinstance(parsed, dict):
-            raise TypeError("Structured response must be a JSON object")
         log.info(
             "[intent:api] schema=%s latency_ms=%.2f response_keys=%s",
             schema_name,
@@ -173,20 +160,3 @@ class IntentDetector:
             list(parsed.keys()),
         )
         return parsed
-
-    def _flatten_content(self, content: Any) -> str:
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    parts.append(part.get("text", ""))
-                elif hasattr(part, "type") and getattr(part, "type") == "text":
-                    parts.append(getattr(part, "text", ""))
-            joined = "".join(parts).strip()
-            if joined:
-                return joined
-        if isinstance(content, dict):
-            return json.dumps(content)
-        raise ValueError("Unexpected content format")

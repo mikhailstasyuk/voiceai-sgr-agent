@@ -2,19 +2,16 @@
   {
     "id": "clinic_001",
     "name": "City Clinic",
-    "address": "123 Main St",
-    "available_slots": ["2026-03-20", "2026-03-21", "2026-03-24"]
+    "address": "123 Main St"
   },
   {
     "id": "clinic_002",
     "name": "Riverside Health Center",
-    "address": "44 River Rd",
-    "available_slots": ["2026-03-22", "2026-03-25", "2026-03-27"]
+    "address": "44 River Rd"
   },
   {
     "id": "clinic_003",
     "name": "Northside Medical",
-    "address": "88 North Ave",
-    "available_slots": ["2026-03-19", "2026-03-23", "2026-03-28"]
+    "address": "88 North Ave"
   }
 ]
