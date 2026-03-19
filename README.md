@@ -1,4 +1,4 @@
-# Hypercheap AI Voice Agent
+# SGR AI Voice Agent
 
 Local development setup (no Docker).
 
