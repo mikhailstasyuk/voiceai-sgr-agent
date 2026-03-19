@@ -7,7 +7,7 @@ Insert a schema-guided business layer between ASR-final transcripts and TTS outp
 Current runtime routes ASR final text directly to free-form LLM reply generation. Task requires strict Pydantic-validated outputs for intent detection and appointment flow decisions.
 
 ## Assumptions
-- `TASK.md` defines the expected scope for this change.
+- Scope for this change is defined by the active plan/task instructions from that date.
 - Business layer supports appointment intent only for now.
 - Existing websocket event contract remains stable for frontend compatibility.
 

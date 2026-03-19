@@ -16,6 +16,8 @@ Use this order when guidance conflicts:
 5. Existing code behavior
 6. Root `README.md` for setup and run commands
 
+Note: `TASK.md` is not a tracked source of truth in this repository.
+
 ## Documentation Map
 Start from [docs/README.md](/home/rhuu/mygit/hypercheap-voiceAI/docs/README.md).
 
@@ -43,6 +45,7 @@ For non-trivial changes:
 - Include: goal, context, assumptions, constraints, steps, validation plan, decisions, follow-ups.
 - Move completed plans to `docs/plans/completed/` with outcome notes.
 - Keep plans decision-complete; avoid “TBD” for core implementation choices.
+- Put task-specific scope and tradeoffs in the relevant plan file instead of a root `TASK.md`.
 
 ## Architecture and Boundary Rules
 - Follow `docs/architecture/dependency-rules.md` for allowed dependency direction.

@@ -24,4 +24,4 @@ This folder is the repository-local knowledge base for agent-first work.
 - If code behavior changes, update relevant product and architecture docs in the same change.
 - If design decisions change, reflect them in active/completed plans.
 - If a term is introduced or overloaded, update `glossary.md`.
-
+- Store task scope and implementation decisions in `docs/plans/`; do not depend on a root `TASK.md`.
